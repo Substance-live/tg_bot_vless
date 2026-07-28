@@ -13,11 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.keyboards.menus import admin_menu_kb, user_menu_kb
-from bot.utils import render_qr
+from bot.utils import apply_vless_remark, render_qr
 from core import messages as msg
 from db.models import User
 from services.node_client import NodeClient, NodeClientError
-from services.provisioning import external_id_for, get_active_nodes
+from services.provisioning import build_remark, external_id_for, get_active_nodes
 from services.subscription import get_active_subscription
 
 
@@ -113,17 +113,16 @@ async def send_user_configs(target: Message, session: AsyncSession, user: User) 
             )
             continue
 
+        link = apply_vless_remark(vless["config_link"], build_remark(user))
         block = msg.config_node_block(
-            node.name, node.country, vless["config_link"], vless.get("is_enabled", True)
+            node.name, node.country, link, vless.get("is_enabled", True)
         )
         if mtproto and mtproto.get("tg_link"):
             block += "\n\n" + msg.mtproto_block(mtproto["tg_link"])
         await target.answer(
             block, link_preview_options=LinkPreviewOptions(is_disabled=True)
         )
-        await target.answer_photo(
-            render_qr(vless["config_link"]), caption=f"QR · {node.name}"
-        )
+        await target.answer_photo(render_qr(link), caption=f"QR · {node.name}")
 
 
 async def status_view(session: AsyncSession, user: User | None) -> str:

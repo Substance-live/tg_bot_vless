@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import math
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from core.logging import get_logger
 from db.models import (
     Node,
@@ -33,6 +35,17 @@ EXPIRE_NEVER = 0  # бессрочный доступ.
 
 def external_id_for(user: User) -> str:
     return str(user.id)
+
+
+def build_remark(user: User) -> str:
+    """Имя конфига в клиенте: "<prefix>_<ник>" (ник из TG / имени / id)."""
+    raw = (
+        user.telegram_username
+        or user.name
+        or (str(user.telegram_id) if user.telegram_id else str(user.id)[:8])
+    )
+    nick = re.sub(r"\s+", "_", raw.strip()) or "user"
+    return f"{settings.VLESS_REMARK_PREFIX}_{nick}"
 
 
 def expire_days_for(subscription: Subscription) -> int:
@@ -93,7 +106,7 @@ async def provision_subscription(
         return []
 
     external_id = external_id_for(user)
-    remark = f"tg:{user.telegram_id}" if user.telegram_id else external_id
+    remark = build_remark(user)
     expire_days = expire_days_for(subscription)
 
     results: list[_NodeProvisionResult] = await asyncio.gather(
