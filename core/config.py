@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     NODE_AGENT_TIMEOUT_SECONDS: int = 10
     NODE_AGENT_RETRY_COUNT: int = 3
 
+    # ── Ссылки-приглашения ─────────────────────────────────────
+    # Сколько живёт неактивированная ссылка (минуты).
+    LINK_TTL_MINUTES: int = 5
+
     # ── Сидинг узлов (JSON-строка, парсится на Этапе 1) ────────
     NODES: str = "[]"
 

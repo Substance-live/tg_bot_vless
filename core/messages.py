@@ -21,6 +21,7 @@ NEED_KEY_ARG = "Укажите ключ: <code>/activate ВАШ_КЛЮЧ</code>"
 KEY_INVALID = {
     "key_not_found": "❌ Ключ не найден. Проверьте правильность ввода.",
     "key_used": "❌ Этот ключ уже использован.",
+    "key_expired": "❌ Ссылка истекла. Запросите новую у администратора.",
     "profile_not_found": "❌ Профиль для этого ключа не найден. Обратитесь к администратору.",
     "telegram_already_bound": "❌ Ваш Telegram уже привязан к другому профилю.",
 }
@@ -125,8 +126,16 @@ BTN_ENABLE = "🟢 Включить"
 BTN_DISABLE = "🔴 Отключить"
 BTN_ACT_LINK = "🔗 Ссылка активации"
 BTN_TEMPLINK = "⏳ Временная ссылка"
+BTN_UNBIND = "🔓 Отвязать TG"
+BTN_DELETE = "🗑 Удалить"
+BTN_DELETE_CONFIRM = "🗑 Удалить навсегда"
 BTN_PREV = "◀"
 BTN_NEXT = "▶"
+
+USER_DELETE_CONFIRM = (
+    "🗑 <b>Удалить пользователя?</b>\n\n"
+    "Будут удалены профиль, подписка и VLESS-клиент на узлах. Действие необратимо."
+)
 
 # Тексты меню
 USER_MENU = "🏠 <b>Личный кабинет</b>\n\nВыберите действие:"
@@ -153,6 +162,7 @@ def user_card_text(
     is_active: bool,
     expires_at=None,
     is_admin: bool = False,
+    note: str | None = None,
 ) -> str:
     bound = "🔗 привязан" if telegram_id else "◻️ не привязан"
     state = "🟢 активен" if is_active else "🔴 отключён"
@@ -168,7 +178,29 @@ def user_card_text(
         lines.append("🛡 администратор")
     if expires_at is not None:
         lines.append(f"⏳ Доступ до: {expires_at:%d.%m.%Y}")
+    if note:
+        lines.append(note)
     return "\n".join(lines)
+
+
+def profile_label(
+    state_name: str,
+    remaining: int | None,
+    name: str | None,
+    username: str | None,
+    key_value: str | None,
+) -> str:
+    """Метка кнопки в списке пользователей (по состоянию профиля)."""
+    nick = f"@{username}" if username else None
+    primary = name or nick or "—"
+    secondary = f" {nick}" if (name and nick) else ""
+    if state_name == "PENDING":
+        m, ss = divmod(max(0, int(remaining or 0)), 60)
+        return f"🟡 {primary} · {m}:{ss:02d} · {key_value or ''}".strip()[:64]
+    emoji = {"ADMIN": "🛡", "ACTIVE": "🟢", "DISABLED": "🔴", "DETACHED": "⚪"}.get(
+        state_name, "•"
+    )
+    return f"{emoji} {primary}{secondary}"[:64]
 
 
 def admin_key_created_link(name: str | None, key_value: str, link: str) -> str:

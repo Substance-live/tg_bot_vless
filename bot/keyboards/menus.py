@@ -10,6 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core import messages as msg
 from db.models import User
+from services.user_admin import ProfileState
 
 # ── Навигационные callback-константы ─────────────────────────────────────────
 NAV_USER = "nav:user"
@@ -27,7 +28,7 @@ TEMPLINK_DURATIONS = (1, 3, 7, 30)  # дни
 
 
 class UserCardCB(CallbackData, prefix="uc"):
-    action: str  # open | on | off | link
+    action: str  # open | on | off | link | del | del_yes | unbind
     user_id: uuid.UUID
 
 
@@ -85,30 +86,19 @@ def cancel_kb() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def _user_flag(u: User) -> str:
-    base = ("🟢" if u.is_active else "🔴") + ("🔗" if u.telegram_id else "◻️")
-    return base + ("🛡" if u.is_admin else "")
-
-
-def _user_label(u: User) -> str:
-    name = u.name or "—"
-    nick = f" @{u.telegram_username}" if u.telegram_username else ""
-    return f"{_user_flag(u)} {name}{nick}"
-
-
-def users_list_kb(profiles: list[User], page: int) -> InlineKeyboardMarkup:
-    """Список профилей с пагинацией. profiles — полный список."""
-    total = len(profiles)
+def users_list_kb(
+    rows: list[tuple[uuid.UUID, str]], page: int
+) -> InlineKeyboardMarkup:
+    """Список профилей с пагинацией. rows — (user_id, готовая метка), полный список."""
+    total = len(rows)
     pages = max(1, (total + USERS_PAGE_SIZE - 1) // USERS_PAGE_SIZE)
     page = max(0, min(page, pages - 1))
     start = page * USERS_PAGE_SIZE
-    chunk = profiles[start : start + USERS_PAGE_SIZE]
+    chunk = rows[start : start + USERS_PAGE_SIZE]
 
     kb = InlineKeyboardBuilder()
-    for u in chunk:
-        kb.button(
-            text=_user_label(u)[:64], callback_data=UserCardCB(action="open", user_id=u.id)
-        )
+    for user_id, label in chunk:
+        kb.button(text=label[:64], callback_data=UserCardCB(action="open", user_id=user_id))
     kb.adjust(1)
 
     nav_row: list[InlineKeyboardButton] = []
@@ -127,22 +117,31 @@ def users_list_kb(profiles: list[User], page: int) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def user_card_kb(target: User) -> InlineKeyboardMarkup:
+def user_card_kb(target: User, state: ProfileState) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    # Админа отключать нельзя — тумблер не показываем.
-    if not target.is_admin:
-        if target.is_active:
-            kb.button(
-                text=msg.BTN_DISABLE, callback_data=UserCardCB(action="off", user_id=target.id)
-            )
+    uid = target.id
+    if state == ProfileState.ADMIN:
+        kb.button(text=msg.BTN_BACK, callback_data=NAV_ADMIN_USERS)
+        return kb.as_markup()
+
+    if state in (ProfileState.ACTIVE, ProfileState.DISABLED):
+        if state == ProfileState.ACTIVE:
+            kb.button(text=msg.BTN_DISABLE, callback_data=UserCardCB(action="off", user_id=uid))
         else:
-            kb.button(
-                text=msg.BTN_ENABLE, callback_data=UserCardCB(action="on", user_id=target.id)
-            )
-    if not target.telegram_id:
-        kb.button(
-            text=msg.BTN_ACT_LINK, callback_data=UserCardCB(action="link", user_id=target.id)
-        )
+            kb.button(text=msg.BTN_ENABLE, callback_data=UserCardCB(action="on", user_id=uid))
+        kb.button(text=msg.BTN_UNBIND, callback_data=UserCardCB(action="unbind", user_id=uid))
+    else:  # PENDING / DETACHED — отвязанные: выдать/показать ссылку
+        kb.button(text=msg.BTN_ACT_LINK, callback_data=UserCardCB(action="link", user_id=uid))
+
+    kb.button(text=msg.BTN_DELETE, callback_data=UserCardCB(action="del", user_id=uid))
     kb.button(text=msg.BTN_BACK, callback_data=NAV_ADMIN_USERS)
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def user_delete_confirm_kb(user_id: uuid.UUID) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text=msg.BTN_DELETE_CONFIRM, callback_data=UserCardCB(action="del_yes", user_id=user_id))
+    kb.button(text=msg.BTN_CANCEL, callback_data=UserCardCB(action="open", user_id=user_id))
     kb.adjust(1)
     return kb.as_markup()
