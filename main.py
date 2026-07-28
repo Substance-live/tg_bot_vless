@@ -11,6 +11,7 @@ import contextlib
 from contextlib import asynccontextmanager
 
 import uvicorn
+from aiogram.types import BotCommand
 from fastapi import FastAPI
 
 from api.routers import health
@@ -40,6 +41,8 @@ async def lifespan(app: FastAPI):
     if settings.BOT_TOKEN:
         bot = create_bot()
         dp = create_dispatcher()
+        # В меню Telegram публикуем только /start — остальное через кнопки.
+        await bot.set_my_commands([BotCommand(command="start", description="Открыть меню")])
         polling_task = asyncio.create_task(
             dp.start_polling(bot, handle_signals=False),
             name="bot-polling",

@@ -109,3 +109,59 @@ def admin_toggle_result(name: str | None, enabled: bool, per_node: list[str]) ->
 
 def admin_node_result(name: str, ok: bool) -> str:
     return f"• {name} — {'✅' if ok else '⚠️ ошибка'}"
+
+
+# ── Кнопочный интерфейс (inline) ─────────────────────────────────────────────
+
+# Метки кнопок
+BTN_CONFIGS = "🔐 Мои конфиги"
+BTN_STATUS = "📊 Статус"
+BTN_ENTER_KEY = "🔑 Ввести ключ"
+BTN_ADMIN_USERS = "👥 Пользователи"
+BTN_NEW_USER = "➕ Новый пользователь"
+BTN_BACK = "◀ Назад"
+BTN_CANCEL = "✖ Отмена"
+BTN_ENABLE = "🟢 Включить"
+BTN_DISABLE = "🔴 Отключить"
+BTN_ACT_LINK = "🔗 Ссылка активации"
+BTN_PREV = "◀"
+BTN_NEXT = "▶"
+
+# Тексты меню
+USER_MENU = "🏠 <b>Личный кабинет</b>\n\nВыберите действие:"
+USER_MENU_NEED_KEY = (
+    "🏠 <b>Личный кабинет</b>\n\n"
+    "У вас пока нет доступа. Активируйте его:\n"
+    "• по ссылке-приглашению от администратора (один тап), или\n"
+    "• нажмите «🔑 Ввести ключ» и пришлите ключ."
+)
+ADMIN_MENU = "🛠 <b>Панель администратора</b>\n\nВыберите действие:"
+
+ENTER_KEY_PROMPT = "Пришлите ключ активации одним сообщением:"
+KEY_CANCELLED = "Отменено."
+CONFIGS_SENDING = "Отправляю конфигурации…"
+
+USERS_LIST_TITLE = "👥 <b>Пользователи</b>\n\n🟢/🔴 — активен · 🔗 — привязан"
+USER_CARD_NOT_FOUND = "Пользователь не найден"
+
+
+def user_card_text(name: str | None, telegram_id: int | None, is_active: bool) -> str:
+    bound = "🔗 привязан" if telegram_id else "◻️ не привязан"
+    state = "🟢 активен" if is_active else "🔴 отключён"
+    return (
+        f"👤 <b>{name or '—'}</b>\n"
+        f"Telegram: {telegram_id or 'не привязан'}\n"
+        f"Доступ: {state}\n"
+        f"Статус: {bound}"
+    )
+
+
+def admin_key_created_link(name: str | None, key_value: str, link: str) -> str:
+    who = f" «{name}»" if name else ""
+    return (
+        f"🔑 Профиль{who} создан.\n\n"
+        f'<a href="{link}">👉 Ссылка-приглашение (один тап)</a>\n'
+        f"<code>{link}</code>\n\n"
+        f"Или ключ для ручного ввода: <code>{key_value}</code>\n\n"
+        "Перешлите ссылку пользователю — он откроет бота и получит доступ автоматически."
+    )

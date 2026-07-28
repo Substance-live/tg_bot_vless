@@ -49,11 +49,19 @@ class Settings(BaseSettings):
     @field_validator("ADMIN_TELEGRAM_IDS", mode="before")
     @classmethod
     def _parse_admin_ids(cls, value: object) -> object:
-        """Допускает пустую строку, CSV ("1,2") или JSON ("[1,2]")."""
+        """Допускает пустую строку, CSV ("1,2"), JSON ("[1,2]") или одиночное число.
+
+        pydantic-settings для list-поля сам JSON-декодирует env, поэтому голое
+        "123" приходит сюда уже как int — оборачиваем в список.
+        """
         if value is None or value == "":
             return []
+        if isinstance(value, int):
+            return [value]
         if isinstance(value, str):
             text = value.strip()
+            if not text:
+                return []
             if text.startswith("["):
                 return json.loads(text)
             return [int(part) for part in text.split(",") if part.strip()]

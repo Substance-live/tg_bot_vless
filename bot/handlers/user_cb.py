@@ -1,0 +1,94 @@
+"""Callback-хендлеры пользователя: навигация, конфиги, статус, ввод ключа (FSM)."""
+
+from __future__ import annotations
+
+from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from bot.keyboards.menus import KEY_CANCEL, KEY_ENTER, NAV_CONFIGS, NAV_STATUS, NAV_USER, back_kb, cancel_kb
+from bot.states import ActivateStates
+from bot.views import (
+    require_access,
+    safe_edit,
+    send_user_configs,
+    show_user_menu,
+    status_view,
+)
+from core import messages as msg
+from core.logging import get_logger
+from db.models import User
+from services.audit import log_action
+from services.key_manager import ActivationError, activate_key
+from services.provisioning import provision_subscription
+
+router = Router(name="user_cb")
+logger = get_logger("user_cb")
+
+
+@router.callback_query(F.data == NAV_USER)
+async def cb_user_menu(cb: CallbackQuery, session: AsyncSession, user: User | None) -> None:
+    await show_user_menu(cb.message, session, user, edit=True)
+    await cb.answer()
+
+
+@router.callback_query(F.data == NAV_CONFIGS)
+async def cb_configs(cb: CallbackQuery, session: AsyncSession, user: User | None) -> None:
+    if not await require_access(cb.message, session, user):
+        await cb.answer()
+        return
+    await cb.answer(msg.CONFIGS_SENDING)
+    await send_user_configs(cb.message, session, user)
+    await show_user_menu(cb.message, session, user, edit=False)
+
+
+@router.callback_query(F.data == NAV_STATUS)
+async def cb_status(cb: CallbackQuery, session: AsyncSession, user: User | None) -> None:
+    text = await status_view(session, user)
+    await safe_edit(cb.message, text, back_kb(NAV_USER))
+    await cb.answer()
+
+
+@router.callback_query(F.data == KEY_ENTER)
+async def cb_enter_key(cb: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(ActivateStates.waiting_key)
+    await safe_edit(cb.message, msg.ENTER_KEY_PROMPT, cancel_kb())
+    await cb.answer()
+
+
+@router.callback_query(F.data == KEY_CANCEL)
+async def cb_cancel_key(
+    cb: CallbackQuery, state: FSMContext, session: AsyncSession, user: User | None
+) -> None:
+    await state.clear()
+    await show_user_menu(cb.message, session, user, edit=True)
+    await cb.answer(msg.KEY_CANCELLED)
+
+
+@router.message(ActivateStates.waiting_key)
+async def on_key_text(
+    message: Message, state: FSMContext, session: AsyncSession, user: User | None
+) -> None:
+    key_value = (message.text or "").strip()
+    tg = message.from_user
+    try:
+        profile, subscription = await activate_key(session, key_value, tg.id, tg.username)
+    except ActivationError as exc:
+        # Оставляем состояние — пользователь может повторить ввод.
+        await message.answer(msg.KEY_INVALID.get(str(exc), msg.KEY_INVALID_DEFAULT))
+        return
+
+    await state.clear()
+    await log_action(
+        session,
+        actor_id=profile.id,
+        action="subscription.activate",
+        entity_type="subscription",
+        entity_id=subscription.id,
+        meta={"key": key_value, "via": "manual"},
+    )
+    await provision_subscription(session, subscription, profile)
+    await message.answer(msg.ACTIVATED_HEADER)
+    await send_user_configs(message, session, profile)
+    await show_user_menu(message, session, profile, edit=False)

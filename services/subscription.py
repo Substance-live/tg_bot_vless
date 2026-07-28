@@ -24,6 +24,31 @@ async def get_active_subscription(
     )
 
 
+async def get_or_create_active_subscription(
+    session: AsyncSession, user: User
+) -> Subscription:
+    """Активная подписка пользователя; создаёт при отсутствии (идемпотентно).
+
+    Используется для дефолтного VPN-доступа админа при /start.
+    """
+    sub = await get_active_subscription(session, user)
+    if sub is None:
+        sub = Subscription(
+            user_id=user.id,
+            status=SubscriptionStatus.active,
+            expires_at=None,
+        )
+        session.add(sub)
+        await session.commit()
+        await session.refresh(sub)
+    return sub
+
+
+async def get_user_by_id(session: AsyncSession, user_id: uuid.UUID) -> User | None:
+    """Пользователь по внутреннему UUID (для callback-карточек)."""
+    return await session.scalar(select(User).where(User.id == user_id))
+
+
 async def get_user_by_ref(session: AsyncSession, ref: str) -> User | None:
     """Резолвит пользователя по ссылке: telegram_id | внутренний UUID | имя."""
     ref = ref.strip()
