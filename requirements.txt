@@ -1,0 +1,29 @@
+# vpn-orchestrator — runtime dependencies
+# Some packages are used from later stages (db, security) but installed now
+# so the environment is ready end-to-end.
+
+fastapi
+uvicorn[standard]
+aiogram>=3.7,<4
+
+# Database / migrations (Этап 1+)
+sqlalchemy[asyncio]>=2
+alembic
+asyncpg
+
+# Cache / rate-limit (Этап 4+)
+redis
+
+# Node Agent HTTP client (Этап 2)
+httpx
+
+# QR-коды для конфигураций (Этап 5)
+segno
+
+# Config & logging
+pydantic-settings
+structlog
+
+# Security (Этап 3/8)
+passlib[bcrypt]
+pyjwt
