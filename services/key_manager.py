@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,9 +16,16 @@ class ActivationError(Exception):
 
 
 async def create_user_with_key(
-    session: AsyncSession, admin: User, name: str | None = None
+    session: AsyncSession,
+    admin: User,
+    name: str | None = None,
+    duration_days: int = 0,
 ) -> tuple[User, ActivationKey]:
-    """Создаёт профиль (telegram_id=NULL) и одноразовый ключ к нему."""
+    """Создаёт профиль (telegram_id=NULL) и одноразовый ключ к нему.
+
+    duration_days=0 → бессрочный доступ; >0 → временный (доступ на N дней с момента
+    активации, срок применяется к VLESS на узле).
+    """
     profile = User(telegram_id=None, name=name, is_active=True)
     session.add(profile)
     await session.flush()  # получить profile.id
@@ -37,6 +44,7 @@ async def create_user_with_key(
     key = ActivationKey(
         key_value=key_value,
         created_by_admin=admin.id,
+        duration_days=duration_days,
         is_used=False,
     )
     session.add(key)
@@ -92,10 +100,15 @@ async def activate_key(
     key.activated_by = profile.id
     key.activated_at = now
 
+    # Временный доступ: срок из ключа применяется к подписке (и далее к VLESS на узле).
+    duration = key.duration_days or 0
+    expires_at = now + timedelta(days=duration) if duration > 0 else None
+
     subscription = Subscription(
         user_id=profile.id,
         status=SubscriptionStatus.active,
-        expires_at=None,
+        expires_at=expires_at,
+        is_trial=duration > 0,
     )
     session.add(subscription)
 

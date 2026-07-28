@@ -18,10 +18,12 @@ NAV_STATUS = "nav:status"
 NAV_ADMIN = "nav:admin"
 NAV_ADMIN_USERS = "nav:admin_users"
 NAV_ADMIN_NEWUSER = "nav:admin_newuser"
+NAV_ADMIN_TEMPLINK = "nav:admin_templink"
 KEY_ENTER = "key:enter"
 KEY_CANCEL = "key:cancel"
 
 USERS_PAGE_SIZE = 8
+TEMPLINK_DURATIONS = (1, 3, 7, 30)  # дни
 
 
 class UserCardCB(CallbackData, prefix="uc"):
@@ -31,6 +33,10 @@ class UserCardCB(CallbackData, prefix="uc"):
 
 class UsersPageCB(CallbackData, prefix="up"):
     page: int
+
+
+class TempLinkCB(CallbackData, prefix="tl"):
+    days: int
 
 
 # ── Билдеры ──────────────────────────────────────────────────────────────────
@@ -51,9 +57,19 @@ def admin_menu_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text=msg.BTN_ADMIN_USERS, callback_data=NAV_ADMIN_USERS)
     kb.button(text=msg.BTN_NEW_USER, callback_data=NAV_ADMIN_NEWUSER)
+    kb.button(text=msg.BTN_TEMPLINK, callback_data=NAV_ADMIN_TEMPLINK)
     kb.button(text=msg.BTN_CONFIGS, callback_data=NAV_CONFIGS)
     kb.button(text=msg.BTN_STATUS, callback_data=NAV_STATUS)
-    kb.adjust(1, 1, 2)
+    kb.adjust(1, 1, 1, 2)
+    return kb.as_markup()
+
+
+def templink_menu_kb() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    for days in TEMPLINK_DURATIONS:
+        kb.button(text=msg.templink_btn(days), callback_data=TempLinkCB(days=days))
+    kb.button(text=msg.BTN_BACK, callback_data=NAV_ADMIN)
+    kb.adjust(2, 2, 1)
     return kb.as_markup()
 
 
@@ -70,7 +86,14 @@ def cancel_kb() -> InlineKeyboardMarkup:
 
 
 def _user_flag(u: User) -> str:
-    return ("🟢" if u.is_active else "🔴") + ("🔗" if u.telegram_id else "◻️")
+    base = ("🟢" if u.is_active else "🔴") + ("🔗" if u.telegram_id else "◻️")
+    return base + ("🛡" if u.is_admin else "")
+
+
+def _user_label(u: User) -> str:
+    name = u.name or "—"
+    nick = f" @{u.telegram_username}" if u.telegram_username else ""
+    return f"{_user_flag(u)} {name}{nick}"
 
 
 def users_list_kb(profiles: list[User], page: int) -> InlineKeyboardMarkup:
@@ -83,8 +106,9 @@ def users_list_kb(profiles: list[User], page: int) -> InlineKeyboardMarkup:
 
     kb = InlineKeyboardBuilder()
     for u in chunk:
-        label = f"{_user_flag(u)} {u.name or (u.telegram_id or '—')}"
-        kb.button(text=str(label), callback_data=UserCardCB(action="open", user_id=u.id))
+        kb.button(
+            text=_user_label(u)[:64], callback_data=UserCardCB(action="open", user_id=u.id)
+        )
     kb.adjust(1)
 
     nav_row: list[InlineKeyboardButton] = []
@@ -105,14 +129,16 @@ def users_list_kb(profiles: list[User], page: int) -> InlineKeyboardMarkup:
 
 def user_card_kb(target: User) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    if target.is_active:
-        kb.button(
-            text=msg.BTN_DISABLE, callback_data=UserCardCB(action="off", user_id=target.id)
-        )
-    else:
-        kb.button(
-            text=msg.BTN_ENABLE, callback_data=UserCardCB(action="on", user_id=target.id)
-        )
+    # Админа отключать нельзя — тумблер не показываем.
+    if not target.is_admin:
+        if target.is_active:
+            kb.button(
+                text=msg.BTN_DISABLE, callback_data=UserCardCB(action="off", user_id=target.id)
+            )
+        else:
+            kb.button(
+                text=msg.BTN_ENABLE, callback_data=UserCardCB(action="on", user_id=target.id)
+            )
     if not target.telegram_id:
         kb.button(
             text=msg.BTN_ACT_LINK, callback_data=UserCardCB(action="link", user_id=target.id)

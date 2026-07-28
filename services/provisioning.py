@@ -8,7 +8,9 @@ external_id = str(user.id); MTProto — общая ссылка узла.
 from __future__ import annotations
 
 import asyncio
+import math
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,11 +28,26 @@ from services.node_client import NodeClient, NodeClientError
 
 logger = get_logger("provisioning")
 
-EXPIRE_NEVER = 0  # MVP: сроков нет, клиент никогда не истекает.
+EXPIRE_NEVER = 0  # бессрочный доступ.
 
 
 def external_id_for(user: User) -> str:
     return str(user.id)
+
+
+def expire_days_for(subscription: Subscription) -> int:
+    """expire_days для узла из subscription.expires_at.
+
+    None → 0 (бессрочно). Иначе — оставшиеся сутки, минимум 1 (узел оперирует
+    целыми днями). Прошедший срок → 1 (клиент истёк).
+    """
+    if subscription.expires_at is None:
+        return EXPIRE_NEVER
+    now = datetime.now(timezone.utc)
+    remaining = (subscription.expires_at - now).total_seconds()
+    if remaining <= 0:
+        return 1  # уже истекло — узел покажет клиента истёкшим
+    return max(1, math.ceil(remaining / 86400))
 
 
 async def get_active_nodes(session: AsyncSession) -> list[Node]:
@@ -47,12 +64,14 @@ class _NodeProvisionResult:
     mtproto_error: str | None = None
 
 
-async def _provision_one_node(node: Node, external_id: str, remark: str) -> _NodeProvisionResult:
+async def _provision_one_node(
+    node: Node, external_id: str, remark: str, expire_days: int
+) -> _NodeProvisionResult:
     res = _NodeProvisionResult(node=node)
     async with NodeClient(node) as client:
         try:
             res.vless = await client.create_vless_user(
-                external_id, expire_days=EXPIRE_NEVER, remark=remark
+                external_id, expire_days=expire_days, remark=remark
             )
         except NodeClientError as exc:
             res.vless_error = str(exc)
@@ -75,9 +94,10 @@ async def provision_subscription(
 
     external_id = external_id_for(user)
     remark = f"tg:{user.telegram_id}" if user.telegram_id else external_id
+    expire_days = expire_days_for(subscription)
 
     results: list[_NodeProvisionResult] = await asyncio.gather(
-        *(_provision_one_node(node, external_id, remark) for node in nodes)
+        *(_provision_one_node(node, external_id, remark, expire_days) for node in nodes)
     )
 
     # Существующие конфиги подписки → map (node_id, protocol) -> NodeConfig.

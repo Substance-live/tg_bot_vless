@@ -124,6 +124,7 @@ BTN_CANCEL = "✖ Отмена"
 BTN_ENABLE = "🟢 Включить"
 BTN_DISABLE = "🔴 Отключить"
 BTN_ACT_LINK = "🔗 Ссылка активации"
+BTN_TEMPLINK = "⏳ Временная ссылка"
 BTN_PREV = "◀"
 BTN_NEXT = "▶"
 
@@ -145,15 +146,29 @@ USERS_LIST_TITLE = "👥 <b>Пользователи</b>\n\n🟢/🔴 — акт
 USER_CARD_NOT_FOUND = "Пользователь не найден"
 
 
-def user_card_text(name: str | None, telegram_id: int | None, is_active: bool) -> str:
+def user_card_text(
+    name: str | None,
+    username: str | None,
+    telegram_id: int | None,
+    is_active: bool,
+    expires_at=None,
+    is_admin: bool = False,
+) -> str:
     bound = "🔗 привязан" if telegram_id else "◻️ не привязан"
     state = "🟢 активен" if is_active else "🔴 отключён"
-    return (
-        f"👤 <b>{name or '—'}</b>\n"
-        f"Telegram: {telegram_id or 'не привязан'}\n"
-        f"Доступ: {state}\n"
-        f"Статус: {bound}"
-    )
+    nick = f"@{username}" if username else "—"
+    lines = [
+        f"👤 <b>{name or '—'}</b>",
+        f"Ник: {nick}",
+        f"Telegram ID: {telegram_id or 'не привязан'}",
+        f"Доступ: {state}",
+        f"Статус: {bound}",
+    ]
+    if is_admin:
+        lines.append("🛡 администратор")
+    if expires_at is not None:
+        lines.append(f"⏳ Доступ до: {expires_at:%d.%m.%Y}")
+    return "\n".join(lines)
 
 
 def admin_key_created_link(name: str | None, key_value: str, link: str) -> str:
@@ -164,4 +179,30 @@ def admin_key_created_link(name: str | None, key_value: str, link: str) -> str:
         f"<code>{link}</code>\n\n"
         f"Или ключ для ручного ввода: <code>{key_value}</code>\n\n"
         "Перешлите ссылку пользователю — он откроет бота и получит доступ автоматически."
+    )
+
+
+TEMPLINK_TITLE = "⏳ <b>Временная ссылка</b>\n\nВыберите срок VPN-доступа:"
+
+
+def _days_word(n: int) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return "день"
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return "дня"
+    return "дней"
+
+
+def templink_btn(days: int) -> str:
+    return f"{days} {_days_word(days)}"
+
+
+def admin_templink_created(name: str | None, key_value: str, link: str, days: int) -> str:
+    who = f" «{name}»" if name else ""
+    return (
+        f"⏳ Временный профиль{who} создан. Доступ: <b>{days} {_days_word(days)}</b>.\n\n"
+        f'<a href="{link}">👉 Ссылка-приглашение (один тап)</a>\n'
+        f"<code>{link}</code>\n\n"
+        f"Или ключ для ручного ввода: <code>{key_value}</code>\n\n"
+        "После активации VLESS-доступ автоматически истечёт на узле по сроку."
     )
