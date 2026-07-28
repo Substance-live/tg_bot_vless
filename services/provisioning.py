@@ -16,7 +16,6 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import settings
 from core.logging import get_logger
 from db.models import (
     Node,
@@ -37,15 +36,24 @@ def external_id_for(user: User) -> str:
     return str(user.id)
 
 
-def build_remark(user: User) -> str:
-    """Имя конфига в клиенте: "<prefix>_<ник>" (ник из TG / имени / id)."""
+def _sanitize(value: str) -> str:
+    return re.sub(r"\s+", "_", value.strip())
+
+
+def build_remark(node: Node, user: User) -> str:
+    """Имя конфига в клиенте: "<метка_узла>_<ник>".
+
+    Метка узла (приставка) — per-VPS, берётся из node.name (сидится из NODES).
+    Ник: telegram_username → name → telegram_id → короткий id.
+    """
     raw = (
         user.telegram_username
         or user.name
         or (str(user.telegram_id) if user.telegram_id else str(user.id)[:8])
     )
-    nick = re.sub(r"\s+", "_", raw.strip()) or "user"
-    return f"{settings.VLESS_REMARK_PREFIX}_{nick}"
+    nick = _sanitize(raw) or "user"
+    prefix = _sanitize(node.name) or "vpn"
+    return f"{prefix}_{nick}"
 
 
 def expire_days_for(subscription: Subscription) -> int:
@@ -106,11 +114,13 @@ async def provision_subscription(
         return []
 
     external_id = external_id_for(user)
-    remark = build_remark(user)
     expire_days = expire_days_for(subscription)
 
     results: list[_NodeProvisionResult] = await asyncio.gather(
-        *(_provision_one_node(node, external_id, remark, expire_days) for node in nodes)
+        *(
+            _provision_one_node(node, external_id, build_remark(node, user), expire_days)
+            for node in nodes
+        )
     )
 
     # Существующие конфиги подписки → map (node_id, protocol) -> NodeConfig.

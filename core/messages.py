@@ -35,13 +35,13 @@ ACCOUNT_DISABLED = "⛔ Ваш доступ приостановлен адми�
 
 NO_NODES = "⚠️ Пока нет доступных серверов. Попробуйте позже."
 
-NODE_UNAVAILABLE = "🔧 <b>{name}</b> ({country}) — временно недоступен."
+NODE_UNAVAILABLE = "🔧 <b>{name}</b> — временно недоступен."
 
 
-def config_node_block(name: str, country: str, vless_link: str, enabled: bool) -> str:
+def config_node_block(name: str, vless_link: str, enabled: bool) -> str:
     state = "🟢 активен" if enabled else "🔴 отключён"
     return (
-        f"🌍 <b>{name}</b> ({country}) — {state}\n"
+        f"🌍 <b>{name}</b> — {state}\n"
         f"<b>VLESS:</b>\n<code>{vless_link}</code>"
     )
 
@@ -65,11 +65,11 @@ def status_text(bound: bool, active: bool, lines: list[str]) -> str:
     return head
 
 
-def status_node_line(name: str, country: str, ok: bool, enabled: bool | None) -> str:
+def status_node_line(name: str, ok: bool, enabled: bool | None) -> str:
     if not ok:
-        return f"• {name} ({country}) — 🔧 недоступен"
+        return f"• {name} — 🔧 недоступен"
     mark = "🟢" if enabled else "🔴"
-    return f"• {name} ({country}) — {mark} {'вкл' if enabled else 'выкл'}"
+    return f"• {name} — {mark} {'вкл' if enabled else 'выкл'}"
 
 
 # ── Админ ───────────────────────────────────────────────────────────────────

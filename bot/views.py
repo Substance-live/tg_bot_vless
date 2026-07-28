@@ -103,20 +103,18 @@ async def send_user_configs(target: Message, session: AsyncSession, user: User) 
                     mtproto = None
         except NodeClientError:
             await target.answer(
-                msg.NODE_UNAVAILABLE.format(name=node.name, country=node.country)
+                msg.NODE_UNAVAILABLE.format(name=node.name)
             )
             continue
 
         if vless is None:
             await target.answer(
-                msg.NODE_UNAVAILABLE.format(name=node.name, country=node.country)
+                msg.NODE_UNAVAILABLE.format(name=node.name)
             )
             continue
 
-        link = apply_vless_remark(vless["config_link"], build_remark(user))
-        block = msg.config_node_block(
-            node.name, node.country, link, vless.get("is_enabled", True)
-        )
+        link = apply_vless_remark(vless["config_link"], build_remark(node, user))
+        block = msg.config_node_block(node.name, link, vless.get("is_enabled", True))
         if mtproto and mtproto.get("tg_link"):
             block += "\n\n" + msg.mtproto_block(mtproto["tg_link"])
         await target.answer(
@@ -142,7 +140,7 @@ async def status_view(session: AsyncSession, user: User | None) -> str:
                 enabled = vless.get("is_enabled") if vless else None
             except NodeClientError:
                 ok, enabled = False, None
-            lines.append(msg.status_node_line(node.name, node.country, ok, enabled))
+            lines.append(msg.status_node_line(node.name, ok, enabled))
 
     return msg.status_text(
         bound=user.telegram_id is not None,
