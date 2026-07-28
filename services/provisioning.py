@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from core.logging import get_logger
 from db.models import (
     Node,
@@ -41,9 +42,10 @@ def _sanitize(value: str) -> str:
 
 
 def build_remark(node: Node, user: User) -> str:
-    """Имя конфига в клиенте: "<метка_узла>_<ник>".
+    """Имя конфига в клиенте: "<бренд-префикс>_<метка_узла>_<ник>".
 
-    Метка узла (приставка) — per-VPS, берётся из node.name (сидится из NODES).
+    Бренд-префикс — общий (settings.VLESS_REMARK_PREFIX, пусто → опускается).
+    Метка узла — per-VPS, из node.name (сидится из NODES).
     Ник: telegram_username → name → telegram_id → короткий id.
     """
     raw = (
@@ -52,8 +54,16 @@ def build_remark(node: Node, user: User) -> str:
         or (str(user.telegram_id) if user.telegram_id else str(user.id)[:8])
     )
     nick = _sanitize(raw) or "user"
-    prefix = _sanitize(node.name) or "vpn"
-    return f"{prefix}_{nick}"
+
+    parts: list[str] = []
+    prefix = _sanitize(settings.VLESS_REMARK_PREFIX)
+    if prefix:
+        parts.append(prefix)
+    label = _sanitize(node.name)
+    if label:
+        parts.append(label)
+    parts.append(nick)
+    return "_".join(parts)
 
 
 def expire_days_for(subscription: Subscription) -> int:
