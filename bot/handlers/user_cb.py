@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.keyboards.menus import (
     KEY_CANCEL,
     KEY_ENTER,
+    NAV_ADMIN,
     NAV_CONFIGS,
     NAV_STATUS,
     NAV_USER,
@@ -24,6 +25,7 @@ from bot.utils import render_qr
 from bot.views import (
     fetch_node_vless,
     get_node,
+    is_admin_ctx,
     require_access,
     safe_delete,
     safe_edit,
@@ -132,7 +134,8 @@ async def cb_config_qr(
 @router.callback_query(F.data == NAV_STATUS)
 async def cb_status(cb: CallbackQuery, session: AsyncSession, user: User | None) -> None:
     text = await status_view(session, user)
-    await safe_edit(cb.message, text, back_kb(NAV_USER))
+    back = NAV_ADMIN if is_admin_ctx(user, cb.from_user) else NAV_USER
+    await safe_edit(cb.message, text, back_kb(back))
     await cb.answer()
 
 

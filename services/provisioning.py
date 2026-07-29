@@ -24,6 +24,7 @@ from db.models import (
     NodeConfigProtocol,
     NodeConfigStatus,
     Subscription,
+    SubscriptionStatus,
     User,
 )
 from services.node_client import NodeClient, NodeClientError
@@ -116,10 +117,18 @@ async def _provision_one_node(
 
 
 async def provision_subscription(
-    session: AsyncSession, subscription: Subscription, user: User
+    session: AsyncSession,
+    subscription: Subscription,
+    user: User,
+    nodes: list[Node] | None = None,
 ) -> list[NodeConfig]:
-    """Создаёт/обновляет node_configs (vless+mtproto) на всех активных узлах."""
-    nodes = await get_active_nodes(session)
+    """Создаёт/обновляет node_configs (vless+mtproto) на узлах.
+
+    nodes=None → все активные узлы. Явный список — точечная провизия только на
+    них (используется backfill'ом для дораздачи недостающих узлов).
+    """
+    if nodes is None:
+        nodes = await get_active_nodes(session)
     if not nodes:
         return []
 
@@ -224,3 +233,57 @@ async def set_user_enabled_on_nodes(
     if not nodes:
         return []
     return list(await asyncio.gather(*(_toggle(node) for node in nodes)))
+
+
+async def backfill_active_subscriptions(session: AsyncSession) -> dict[str, int]:
+    """Дораздаёт активным подпискам недостающие VLESS-конфиги на активных узлах.
+
+    Реконсиляция (01 §6): при добавлении узла его получают все активные подписки
+    без переактивации; заодно самолечение прошлых пробелов (pending/провалы).
+    «Недостающий» узел = нет активного vless NodeConfig (нет строки или pending).
+    Точечно провизит только недостающие узлы; при полном покрытии — 0 вызовов к агентам.
+    """
+    nodes = await get_active_nodes(session)
+    if not nodes:
+        return {"nodes": 0, "subscriptions": 0, "provisioned": 0}
+
+    rows = (
+        await session.execute(
+            select(Subscription, User)
+            .join(User, Subscription.user_id == User.id)
+            .where(
+                Subscription.status == SubscriptionStatus.active,
+                User.is_active.is_(True),
+            )
+        )
+    ).all()
+
+    sub_ids = [sub.id for sub, _ in rows]
+    have: set[tuple] = set()
+    if sub_ids:
+        have = {
+            (sid, nid)
+            for sid, nid in (
+                await session.execute(
+                    select(NodeConfig.subscription_id, NodeConfig.node_id).where(
+                        NodeConfig.subscription_id.in_(sub_ids),
+                        NodeConfig.protocol == NodeConfigProtocol.vless,
+                        NodeConfig.status == NodeConfigStatus.active,
+                    )
+                )
+            ).all()
+        }
+
+    provisioned = 0
+    for sub, user in rows:
+        missing = [node for node in nodes if (sub.id, node.id) not in have]
+        if missing:
+            await provision_subscription(session, sub, user, nodes=missing)
+            provisioned += 1
+            logger.info(
+                "backfill.subscription",
+                user=str(user.id),
+                missing=[node.name for node in missing],
+            )
+
+    return {"nodes": len(nodes), "subscriptions": len(rows), "provisioned": provisioned}

@@ -20,21 +20,35 @@ from core.config import settings
 from core.logging import get_logger, setup_logging
 from db.session import SessionMaker
 from services.node_seed import seed_nodes
+from services.provisioning import backfill_active_subscriptions
 
 setup_logging(settings.LOG_LEVEL, settings.LOG_FORMAT)
 log = get_logger("orchestrator")
+
+
+async def _run_backfill() -> None:
+    """Фоновая дораздача активным подпискам недостающих узлов (01 §6). Best-effort."""
+    try:
+        async with SessionMaker() as session:
+            summary = await backfill_active_subscriptions(session)
+        log.info("backfill.done", **summary)
+    except Exception as exc:  # noqa: BLE001
+        log.error("backfill.failed", error=str(exc))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     bot = None
     polling_task: asyncio.Task | None = None
+    backfill_task: asyncio.Task | None = None
 
     # Сидинг узлов из NODES. Best-effort: не роняем API/health при сбое БД.
     try:
         async with SessionMaker() as session:
             nodes = await seed_nodes(session, settings.NODES)
         log.info("nodes.seeded", count=len(nodes))
+        # Фоном раздаём активным подпискам недостающие узлы (не блокирует старт).
+        backfill_task = asyncio.create_task(_run_backfill(), name="node-backfill")
     except Exception as exc:  # noqa: BLE001
         log.error("nodes.seed_failed", error=str(exc))
 
@@ -54,6 +68,10 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        if backfill_task is not None and not backfill_task.done():
+            backfill_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await backfill_task
         if polling_task is not None:
             polling_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

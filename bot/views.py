@@ -21,10 +21,20 @@ from bot.keyboards.menus import (
 )
 from bot.utils import apply_vless_remark, render_qr
 from core import messages as msg
+from core.config import settings
 from db.models import Node, User
 from services.node_client import NodeClient, NodeClientError
 from services.provisioning import build_remark, external_id_for, get_active_nodes
 from services.subscription import get_active_subscription
+
+
+def is_admin_ctx(user: User | None, tg_user: TgUser | None = None) -> bool:
+    """Админ ли контекст (мирроринг AdminFilter): по флагу или по ADMIN_TELEGRAM_IDS."""
+    if user is not None and user.is_admin:
+        return True
+    if tg_user is not None and tg_user.id in settings.ADMIN_TELEGRAM_IDS:
+        return True
+    return False
 
 
 async def ensure_admin_user(session: AsyncSession, tg_user: TgUser) -> User:
@@ -183,7 +193,7 @@ async def show_configs_servers(
     if not nodes:
         await target.answer(msg.NO_NODES)
         return
-    back_cb = NAV_ADMIN if user.is_admin else NAV_USER
+    back_cb = NAV_ADMIN if is_admin_ctx(user) else NAV_USER
     kb = configs_servers_kb(nodes, back_cb)
     if edit:
         await safe_edit(target, msg.CONFIGS_CHOOSE_SERVER, kb)
