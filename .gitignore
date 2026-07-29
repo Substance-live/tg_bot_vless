@@ -16,6 +16,10 @@ env/
 # Environment / secrets
 .env
 
+# TLS-серты node-агентов (self-signed https-узлы) — не коммитим
+certs/
+*.pem
+
 # IDE
 .idea/
 .vscode/

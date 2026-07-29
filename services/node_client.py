@@ -61,7 +61,10 @@ class NodeClient:
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> NodeClient:
-        self._client = httpx.AsyncClient(timeout=self._timeout)
+        # verify: путь к PEM с доверенными сертами агентов (пиннинг self-signed
+        # для https-узлов) либо True (системные CA). Для http-узлов не влияет.
+        verify: str | bool = settings.NODE_AGENT_CA_BUNDLE or True
+        self._client = httpx.AsyncClient(timeout=self._timeout, verify=verify)
         return self
 
     async def __aexit__(self, *exc: object) -> None:

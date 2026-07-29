@@ -11,6 +11,9 @@ services:
     # в NODES укажите agent_url = http://host.docker.internal:8080 для локального узла.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Доверенные серты node-агентов (self-signed https-узлы). См. NODE_AGENT_CA_BUNDLE.
+    volumes:
+      - ./certs:/certs:ro
     # Бот работает через polling (исходящие соединения) — входящий порт не нужен.
     # Раскомментируйте, если нужен доступ к /api/v1/health снаружи:
     # ports:

@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # ── Взаимодействие с Node Agent ────────────────────────────
     NODE_AGENT_TIMEOUT_SECONDS: int = 10
     NODE_AGENT_RETRY_COUNT: int = 3
+    # Путь к PEM с доверенными сертами node-агентов (для https-узлов с
+    # самоподписанным сертом — пиннинг). Пусто → системные CA (verify=True).
+    NODE_AGENT_CA_BUNDLE: str | None = None
 
     # ── Ссылки-приглашения ─────────────────────────────────────
     # Сколько живёт неактивированная ссылка (минуты).
