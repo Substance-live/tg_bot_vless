@@ -2,7 +2,8 @@
 
 Секреты узлов задаются только здесь (в .env), не через Telegram.
 Upsert по agent_url: обновляет name/country/secret, форсит is_active=True;
-вставляет отсутствующие.
+вставляет отсутствующие. Узлы, которых больше нет в NODES (напр. сменили URL
+http→https), деактивируются (is_active=False), чтобы не висели в статусе.
 """
 
 from __future__ import annotations
@@ -67,6 +68,14 @@ async def seed_nodes(session: AsyncSession, raw_nodes: str) -> list[Node]:
             node.is_active = True
             logger.info("node_seed.update", name=entry["name"], url=entry["agent_url"])
         seeded.append(node)
+
+    # Деактивируем узлы, отсутствующие в текущем NODES (напр. старый URL после
+    # смены http→https). Не удаляем — сохраняем историю и избегаем FK на node_configs.
+    seeded_urls = {entry["agent_url"] for entry in entries}
+    for url, node in existing.items():
+        if url not in seeded_urls and node.is_active:
+            node.is_active = False
+            logger.info("node_seed.deactivate", name=node.name, url=url)
 
     await session.commit()
     logger.info("node_seed.done", count=len(seeded))
