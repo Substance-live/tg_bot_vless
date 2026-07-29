@@ -40,6 +40,11 @@ class TempLinkCB(CallbackData, prefix="tl"):
     days: int
 
 
+class ConfigCB(CallbackData, prefix="cfg"):
+    action: str  # node | link | qr
+    node_id: uuid.UUID
+
+
 # ── Билдеры ──────────────────────────────────────────────────────────────────
 
 def user_menu_kb(activated: bool) -> InlineKeyboardMarkup:
@@ -71,6 +76,31 @@ def templink_menu_kb() -> InlineKeyboardMarkup:
         kb.button(text=msg.templink_btn(days), callback_data=TempLinkCB(days=days))
     kb.button(text=msg.BTN_BACK, callback_data=NAV_ADMIN)
     kb.adjust(2, 2, 1)
+    return kb.as_markup()
+
+
+def configs_servers_kb(
+    nodes: list, back_cb: str
+) -> InlineKeyboardMarkup:
+    """Список серверов: кнопка на узел + «Назад» в меню."""
+    kb = InlineKeyboardBuilder()
+    for node in nodes:
+        kb.button(
+            text=node.name[:64],
+            callback_data=ConfigCB(action="node", node_id=node.id),
+        )
+    kb.button(text=msg.BTN_BACK, callback_data=back_cb)
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def config_node_kb(node_id: uuid.UUID) -> InlineKeyboardMarkup:
+    """Выбор формата конфига для конкретного узла."""
+    kb = InlineKeyboardBuilder()
+    kb.button(text=msg.BTN_LINK, callback_data=ConfigCB(action="link", node_id=node_id))
+    kb.button(text=msg.BTN_QR, callback_data=ConfigCB(action="qr", node_id=node_id))
+    kb.button(text=msg.BTN_BACK, callback_data=NAV_CONFIGS)
+    kb.adjust(2, 1)
     return kb.as_markup()
 
 

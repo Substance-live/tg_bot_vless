@@ -7,12 +7,28 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.keyboards.menus import KEY_CANCEL, KEY_ENTER, NAV_CONFIGS, NAV_STATUS, NAV_USER, back_kb, cancel_kb
+from aiogram.types import LinkPreviewOptions
+
+from bot.keyboards.menus import (
+    KEY_CANCEL,
+    KEY_ENTER,
+    NAV_CONFIGS,
+    NAV_STATUS,
+    NAV_USER,
+    ConfigCB,
+    back_kb,
+    cancel_kb,
+    config_node_kb,
+)
 from bot.states import ActivateStates
+from bot.utils import render_qr
 from bot.views import (
+    fetch_node_vless,
+    get_node,
     require_access,
     safe_edit,
     send_user_configs,
+    show_configs_servers,
     show_user_menu,
     status_view,
 )
@@ -38,9 +54,69 @@ async def cb_configs(cb: CallbackQuery, session: AsyncSession, user: User | None
     if not await require_access(cb.message, session, user):
         await cb.answer()
         return
-    await cb.answer(msg.CONFIGS_SENDING)
-    await send_user_configs(cb.message, session, user)
-    await show_user_menu(cb.message, session, user, edit=False)
+    await show_configs_servers(cb.message, session, user, edit=True)
+    await cb.answer()
+
+
+@router.callback_query(ConfigCB.filter(F.action == "node"))
+async def cb_config_node(
+    cb: CallbackQuery, callback_data: ConfigCB, session: AsyncSession, user: User | None
+) -> None:
+    if not await require_access(cb.message, session, user):
+        await cb.answer()
+        return
+    node = await get_node(session, callback_data.node_id)
+    if node is None:
+        await cb.answer(msg.CONFIG_NO_DATA, show_alert=True)
+        return
+    _, enabled, _ = await fetch_node_vless(node, user)
+    await safe_edit(
+        cb.message, msg.configs_node_screen(node.name, enabled), config_node_kb(node.id)
+    )
+    await cb.answer()
+
+
+@router.callback_query(ConfigCB.filter(F.action == "link"))
+async def cb_config_link(
+    cb: CallbackQuery, callback_data: ConfigCB, session: AsyncSession, user: User | None
+) -> None:
+    if not await require_access(cb.message, session, user):
+        await cb.answer()
+        return
+    node = await get_node(session, callback_data.node_id)
+    if node is None:
+        await cb.answer(msg.CONFIG_NO_DATA, show_alert=True)
+        return
+    link, enabled, mtproto = await fetch_node_vless(node, user)
+    if link is None:
+        await cb.answer(msg.CONFIG_NO_DATA, show_alert=True)
+        return
+    block = msg.config_node_block(node.name, link, enabled)
+    if mtproto and mtproto.get("tg_link"):
+        block += "\n\n" + msg.mtproto_block(mtproto["tg_link"])
+    await cb.message.answer(
+        block, link_preview_options=LinkPreviewOptions(is_disabled=True)
+    )
+    await cb.answer()
+
+
+@router.callback_query(ConfigCB.filter(F.action == "qr"))
+async def cb_config_qr(
+    cb: CallbackQuery, callback_data: ConfigCB, session: AsyncSession, user: User | None
+) -> None:
+    if not await require_access(cb.message, session, user):
+        await cb.answer()
+        return
+    node = await get_node(session, callback_data.node_id)
+    if node is None:
+        await cb.answer(msg.CONFIG_NO_DATA, show_alert=True)
+        return
+    link, _, _ = await fetch_node_vless(node, user)
+    if link is None:
+        await cb.answer(msg.CONFIG_NO_DATA, show_alert=True)
+        return
+    await cb.message.answer_photo(render_qr(link), caption=f"QR · {node.name}")
+    await cb.answer()
 
 
 @router.callback_query(F.data == NAV_STATUS)

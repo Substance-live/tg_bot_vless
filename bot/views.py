@@ -12,10 +12,16 @@ from aiogram.types import InlineKeyboardMarkup, LinkPreviewOptions, Message, Use
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.keyboards.menus import admin_menu_kb, user_menu_kb
+from bot.keyboards.menus import (
+    NAV_ADMIN,
+    NAV_USER,
+    admin_menu_kb,
+    configs_servers_kb,
+    user_menu_kb,
+)
 from bot.utils import apply_vless_remark, render_qr
 from core import messages as msg
-from db.models import User
+from db.models import Node, User
 from services.node_client import NodeClient, NodeClientError
 from services.provisioning import build_remark, external_id_for, get_active_nodes
 from services.subscription import get_active_subscription
@@ -121,6 +127,53 @@ async def send_user_configs(target: Message, session: AsyncSession, user: User) 
             block, link_preview_options=LinkPreviewOptions(is_disabled=True)
         )
         await target.answer_photo(render_qr(link), caption=f"QR · {node.name}")
+
+
+async def get_node(session: AsyncSession, node_id) -> Node | None:
+    """Активный узел по id (иначе None)."""
+    return await session.scalar(
+        select(Node).where(Node.id == node_id, Node.is_active.is_(True))
+    )
+
+
+async def fetch_node_vless(
+    node: Node, user: User
+) -> tuple[str | None, bool, dict | None]:
+    """Читает конфиг пользователя с одного узла живьём.
+
+    Возвращает (vless_link | None, enabled, mtproto | None). Узел недоступен или
+    клиента нет → (None, False, ...). Ссылка уже с применённым remark.
+    """
+    external_id = external_id_for(user)
+    try:
+        async with NodeClient(node) as client:
+            vless = await client.get_vless_user(external_id)
+            try:
+                mtproto = await client.get_mtproto_info()
+            except NodeClientError:
+                mtproto = None
+    except NodeClientError:
+        return None, False, None
+    if vless is None:
+        return None, False, mtproto
+    link = apply_vless_remark(vless["config_link"], build_remark(node, user))
+    return link, bool(vless.get("is_enabled", True)), mtproto
+
+
+async def show_configs_servers(
+    target: Message, session: AsyncSession, user: User, *, edit: bool
+) -> None:
+    """Экран выбора сервера для получения конфига."""
+    nodes = await get_active_nodes(session)
+    if not nodes:
+        await target.answer(msg.NO_NODES)
+        return
+    back_cb = NAV_ADMIN if user.is_admin else NAV_USER
+    kb = configs_servers_kb(nodes, back_cb)
+    if edit:
+        await safe_edit(target, msg.CONFIGS_CHOOSE_SERVER, kb)
+    else:
+        await target.answer(msg.CONFIGS_CHOOSE_SERVER, reply_markup=kb)
 
 
 async def status_view(session: AsyncSession, user: User | None) -> str:

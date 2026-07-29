@@ -46,6 +46,16 @@ def config_node_block(name: str, vless_link: str, enabled: bool) -> str:
     )
 
 
+CONFIGS_CHOOSE_SERVER = "🔐 <b>Мои конфиги</b>\n\nВыберите сервер:"
+
+CONFIG_NO_DATA = "🔧 Конфиг на этом сервере недоступен. Попробуйте позже."
+
+
+def configs_node_screen(name: str, enabled: bool) -> str:
+    state = "🟢 активен" if enabled else "🔴 отключён"
+    return f"🌍 <b>{name}</b> — {state}\n\nВыберите формат:"
+
+
 def mtproto_block(tg_link: str) -> str:
     return (
         "📱 <b>MTProto-прокси для Telegram</b>\n"
@@ -116,6 +126,8 @@ def admin_node_result(name: str, ok: bool) -> str:
 
 # Метки кнопок
 BTN_CONFIGS = "🔐 Мои конфиги"
+BTN_LINK = "🔗 Ссылка"
+BTN_QR = "📱 QR"
 BTN_STATUS = "📊 Статус"
 BTN_ENTER_KEY = "🔑 Ввести ключ"
 BTN_ADMIN_USERS = "👥 Пользователи"
