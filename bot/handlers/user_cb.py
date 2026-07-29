@@ -7,8 +7,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aiogram.types import LinkPreviewOptions
-
 from bot.keyboards.menus import (
     KEY_CANCEL,
     KEY_ENTER,
@@ -18,6 +16,7 @@ from bot.keyboards.menus import (
     ConfigCB,
     back_kb,
     cancel_kb,
+    config_back_kb,
     config_node_kb,
 )
 from bot.states import ActivateStates
@@ -26,6 +25,7 @@ from bot.views import (
     fetch_node_vless,
     get_node,
     require_access,
+    safe_delete,
     safe_edit,
     send_user_configs,
     show_configs_servers,
@@ -62,6 +62,7 @@ async def cb_configs(cb: CallbackQuery, session: AsyncSession, user: User | None
 async def cb_config_node(
     cb: CallbackQuery, callback_data: ConfigCB, session: AsyncSession, user: User | None
 ) -> None:
+    """Экран выбора формата. Может прийти из списка (текст) или с QR (фото)."""
     if not await require_access(cb.message, session, user):
         await cb.answer()
         return
@@ -70,9 +71,13 @@ async def cb_config_node(
         await cb.answer(msg.CONFIG_NO_DATA, show_alert=True)
         return
     _, enabled, _ = await fetch_node_vless(node, user)
-    await safe_edit(
-        cb.message, msg.configs_node_screen(node.name, enabled), config_node_kb(node.id)
-    )
+    text = msg.configs_node_screen(node.name, enabled)
+    kb = config_node_kb(node.id)
+    if cb.message.photo:  # пришли с QR-фото — текст в фото не превратить, пересоздаём
+        await safe_delete(cb.message)
+        await cb.message.answer(text, reply_markup=kb)
+    else:
+        await safe_edit(cb.message, text, kb)
     await cb.answer()
 
 
@@ -80,6 +85,7 @@ async def cb_config_node(
 async def cb_config_link(
     cb: CallbackQuery, callback_data: ConfigCB, session: AsyncSession, user: User | None
 ) -> None:
+    """Ссылка — правим то же (текстовое) сообщение выбора формата."""
     if not await require_access(cb.message, session, user):
         await cb.answer()
         return
@@ -94,9 +100,7 @@ async def cb_config_link(
     block = msg.config_node_block(node.name, link, enabled)
     if mtproto and mtproto.get("tg_link"):
         block += "\n\n" + msg.mtproto_block(mtproto["tg_link"])
-    await cb.message.answer(
-        block, link_preview_options=LinkPreviewOptions(is_disabled=True)
-    )
+    await safe_edit(cb.message, block, config_back_kb(node.id), disable_preview=True)
     await cb.answer()
 
 
@@ -104,6 +108,7 @@ async def cb_config_link(
 async def cb_config_qr(
     cb: CallbackQuery, callback_data: ConfigCB, session: AsyncSession, user: User | None
 ) -> None:
+    """QR — заменяем текстовое сообщение фото (удаляем + шлём фото)."""
     if not await require_access(cb.message, session, user):
         await cb.answer()
         return
@@ -115,7 +120,12 @@ async def cb_config_qr(
     if link is None:
         await cb.answer(msg.CONFIG_NO_DATA, show_alert=True)
         return
-    await cb.message.answer_photo(render_qr(link), caption=f"QR · {node.name}")
+    await safe_delete(cb.message)
+    await cb.message.answer_photo(
+        render_qr(link),
+        caption=f"QR · {node.name}",
+        reply_markup=config_back_kb(node.id),
+    )
     await cb.answer()
 
 

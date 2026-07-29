@@ -104,6 +104,13 @@ def config_node_kb(node_id: uuid.UUID) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
+def config_back_kb(node_id: uuid.UUID) -> InlineKeyboardMarkup:
+    """Только «Назад» — к экрану выбора формата этого узла."""
+    kb = InlineKeyboardBuilder()
+    kb.button(text=msg.BTN_BACK, callback_data=ConfigCB(action="node", node_id=node_id))
+    return kb.as_markup()
+
+
 def back_kb(target: str) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text=msg.BTN_BACK, callback_data=target)

@@ -47,13 +47,28 @@ async def ensure_admin_user(session: AsyncSession, tg_user: TgUser) -> User:
     return user
 
 
-async def safe_edit(target: Message, text: str, kb: InlineKeyboardMarkup) -> None:
+async def safe_edit(
+    target: Message,
+    text: str,
+    kb: InlineKeyboardMarkup,
+    *,
+    disable_preview: bool = False,
+) -> None:
     """edit_text, глотая 'message is not modified'."""
+    opts = LinkPreviewOptions(is_disabled=True) if disable_preview else None
     try:
-        await target.edit_text(text, reply_markup=kb)
+        await target.edit_text(text, reply_markup=kb, link_preview_options=opts)
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc):
             raise
+
+
+async def safe_delete(target: Message) -> None:
+    """Удаляет сообщение, игнорируя ошибку (старое/уже удалено)."""
+    try:
+        await target.delete()
+    except TelegramBadRequest:
+        pass
 
 
 async def show_user_menu(
